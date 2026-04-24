@@ -326,9 +326,27 @@ async def run_analysis(payload: TriggerPayload) -> dict[str, Any]:
     return {"accepted": True, "job_id": payload.job_id}
 
 
-if __name__ == "__main__":
+def start_worker() -> Any:
     import uvicorn
 
     host = os.getenv("COLAB_WORKER_HOST", "0.0.0.0")
     port = int(os.getenv("COLAB_WORKER_PORT", "8787"))
-    uvicorn.run("worker_service:app", host=host, port=port, reload=False)
+
+    config = uvicorn.Config(app=app, host=host, port=port, reload=False)
+    server = uvicorn.Server(config=config)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # Normal Python process (no running event loop).
+        server.run()
+        return None
+
+    # Jupyter/Colab already has an active event loop.
+    task = loop.create_task(server.serve())
+    print(f"BiasLens Colab worker running at http://{host}:{port}")
+    return task
+
+
+if __name__ == "__main__":
+    start_worker()

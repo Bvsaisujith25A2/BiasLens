@@ -10,6 +10,15 @@ pip install -r requirements.txt
 python worker_service.py
 ```
 
+In Google Colab (inside a Python cell), prefer:
+
+```python
+import worker_service
+worker_service.start_worker()
+```
+
+This starts the FastAPI worker in the notebook event loop without the `asyncio.run()` conflict.
+
 Worker endpoint:
 
 - `POST /run-analysis`
