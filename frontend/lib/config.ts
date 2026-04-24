@@ -47,8 +47,8 @@ export const config = {
   },
   upload: {
     maxFileSizeMB: parseInt(getOptionalEnvVar("NEXT_PUBLIC_MAX_FILE_SIZE_MB", "500"), 10),
-    allowedTypes: ["image/jpeg", "image/png", "application/dicom", "text/csv", "application/csv"],
-    allowedExtensions: [".jpg", ".jpeg", ".png", ".dcm", ".dicom", ".csv"],
+    allowedTypes: ["image/jpeg", "image/png", "application/dicom", "text/csv", "application/csv", "application/zip"],
+    allowedExtensions: [".jpg", ".jpeg", ".png", ".dcm", ".dicom", ".csv", ".zip"],
   },
 } as const;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,13 @@ import {
   AlertCircle,
   X,
   RefreshCw,
+  FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDatasetUpload } from "@/hooks/use-dataset-upload";
 import { useAuditStatus, getStatusMessage, getEstimatedProgress } from "@/hooks/use-audit-status";
 import type { UploadStep } from "@/lib/api";
+import { createDatasetBundle } from "@/lib/dataset-bundle";
 
 interface FileItem {
   id: string;
@@ -76,6 +78,14 @@ export function DatasetUpload({ onAnalysisComplete }: DatasetUploadProps) {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute("webkitdirectory", "true");
+      folderInputRef.current.setAttribute("directory", "true");
+    }
+  }, []);
 
   const { progress, isUploading, uploadDataset, reset: resetUpload } = useDatasetUpload({
     onSuccess: (jobId) => {
@@ -153,37 +163,58 @@ export function DatasetUpload({ onAnalysisComplete }: DatasetUploadProps) {
   }, []);
 
   const processFiles = useCallback(async (fileList: FileList | File[]) => {
-    const newFiles: FileItem[] = Array.from(fileList).map((file) => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      file,
-      status: "pending" as const,
-      progress: 0,
-      message: "Waiting to upload...",
-    }));
+    const sourceFiles = Array.from(fileList);
+    if (sourceFiles.length === 0) {
+      return;
+    }
 
-    setFiles((prev) => [...newFiles, ...prev]);
+    const itemId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-    // Process files sequentially
-    for (const fileItem of newFiles) {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === fileItem.id
-            ? { ...f, status: "uploading", message: "Requesting secure upload link..." }
-            : f
-        )
-      );
+    try {
+      const bundle = await createDatasetBundle(sourceFiles);
 
-      const jobId = await uploadDataset(fileItem.file);
-      
+      const fileItem: FileItem = {
+        id: itemId,
+        file: bundle.file,
+        status: "uploading",
+        progress: 0,
+        message: `Preparing ${bundle.originalFileCount} files as one dataset`,
+      };
+
+      setFiles((prev) => [fileItem, ...prev]);
+
+      const jobId = await uploadDataset(bundle.file, bundle.datasetName);
+
       if (jobId) {
         setFiles((prev) =>
           prev.map((f) =>
-            f.id === fileItem.id
-              ? { ...f, jobId, status: "processing", progress: 70, message: "Analyzing dataset for bias..." }
+            f.id === itemId
+              ? {
+                  ...f,
+                  jobId,
+                  status: "processing",
+                  progress: 70,
+                  message: `Analyzing ${bundle.originalFileCount} files as one dataset...`,
+                }
               : f
           )
         );
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to prepare dataset files.";
+      const fallbackFile = sourceFiles[0] ?? new File([""], "dataset");
+
+      setFiles((prev) => [
+        {
+          id: itemId,
+          file: fallbackFile,
+          status: "error",
+          progress: 0,
+          message,
+          error: message,
+        },
+        ...prev,
+      ]);
     }
   }, [uploadDataset]);
 
@@ -206,6 +237,10 @@ export function DatasetUpload({ onAnalysisComplete }: DatasetUploadProps) {
 
   const handleBrowseClick = useCallback(() => {
     fileInputRef.current?.click();
+  }, []);
+
+  const handleFolderBrowseClick = useCallback(() => {
+    folderInputRef.current?.click();
   }, []);
 
   const handleRemoveFile = useCallback((fileId: string) => {
@@ -288,6 +323,14 @@ export function DatasetUpload({ onAnalysisComplete }: DatasetUploadProps) {
         type="file"
         className="hidden"
         multiple
+        accept=".jpg,.jpeg,.png,.dcm,.dicom,.csv,.zip"
+        onChange={handleFileSelect}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        className="hidden"
+        multiple
         accept=".jpg,.jpeg,.png,.dcm,.dicom,.csv"
         onChange={handleFileSelect}
       />
@@ -320,11 +363,36 @@ export function DatasetUpload({ onAnalysisComplete }: DatasetUploadProps) {
             />
           </div>
           <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
-            Drop your dataset files here
+            Drop a folder, ZIP, or dataset files
           </h3>
           <p className="mb-4 text-center text-xs text-muted-foreground sm:text-sm">
-            Drag and drop your files, or click to browse
+            We bundle selected files into one archive so one upload starts one analysis job
           </p>
+          <div className="mb-4 flex flex-wrap justify-center gap-2">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleBrowseClick();
+              }}
+            >
+              Upload Files or ZIP
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleFolderBrowseClick();
+              }}
+            >
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Select Folder
+            </Button>
+          </div>
           <div className="flex flex-wrap justify-center gap-2">
             <Badge variant="secondary" className="font-mono text-xs">
               JPG
@@ -337,6 +405,9 @@ export function DatasetUpload({ onAnalysisComplete }: DatasetUploadProps) {
             </Badge>
             <Badge variant="secondary" className="font-mono text-xs">
               CSV (metadata)
+            </Badge>
+            <Badge variant="secondary" className="font-mono text-xs">
+              ZIP (recommended)
             </Badge>
           </div>
         </CardContent>
