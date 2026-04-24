@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     colab_shared_secret: Optional[str] = None
     colab_request_timeout_seconds: int = 20
     backend_public_url: Optional[str] = None
+    worker_retry_loop_enabled: bool = True
+    worker_retry_interval_seconds: int = 30
+    worker_retry_batch_size: int = 25
+    worker_processing_stale_after_seconds: int = 1200
 
     default_user_id: str = "demo-user"
     default_user_email: str = "demo@biaslens.ai"

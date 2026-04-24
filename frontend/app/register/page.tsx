@@ -42,7 +42,12 @@ export default function RegisterPage() {
       await register(name, email, password);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      const message = err instanceof Error ? err.message : "Registration failed";
+      if (message === "Account created. Please sign in to continue.") {
+        router.push("/login");
+        return;
+      }
+      setError(message);
     }
   };
 

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from app.db.supabase_client import get_supabase_client
@@ -132,6 +132,43 @@ class AnalysisRepository:
         start = (page - 1) * per_page
         end = start + per_page
         return deepcopy(rows[start:end]), total
+
+    def list_retriable_jobs(self, limit: int = 25, processing_stale_after_seconds: int = 300) -> list[dict[str, Any]]:
+        """Return jobs that should be retried by the worker trigger loop."""
+        now = datetime.now(timezone.utc)
+        stale_cutoff = now - timedelta(seconds=processing_stale_after_seconds)
+
+        def should_retry(job: dict[str, Any]) -> bool:
+            status = job.get("status")
+            if status == "PENDING":
+                return True
+            if status != "PROCESSING":
+                return False
+
+            updated_at = job.get("updated_at")
+            if not isinstance(updated_at, datetime):
+                return True
+            return updated_at <= stale_cutoff
+
+        if self._supabase:
+            try:
+                response = (
+                    self._supabase.table("analyses")
+                    .select("*")
+                    .in_("status", ["PENDING", "PROCESSING"])
+                    .order("updated_at", desc=False)
+                    .limit(max(limit * 4, limit))
+                    .execute()
+                )
+                rows = [self._deserialize(row) for row in (response.data or [])]
+                retriable = [row for row in rows if should_retry(row)]
+                return retriable[:limit]
+            except Exception:
+                pass
+
+        jobs = [deepcopy(job) for job in self._jobs.values() if should_retry(job)]
+        jobs.sort(key=lambda item: item.get("updated_at") or now)
+        return jobs[:limit]
 
     def get_or_create_user(self, user_id: str, fallback_email: str, fallback_name: str, fallback_role: str) -> dict[str, Any]:
         if user_id in self._users:

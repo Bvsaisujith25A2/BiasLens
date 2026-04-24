@@ -82,6 +82,17 @@ class AuthService:
             )
 
         session = auth_response.session
+        if session is None:
+            # Some Supabase configurations create the user but do not return
+            # a signup session. Try an immediate sign-in fallback.
+            try:
+                sign_in_response = client.auth.sign_in_with_password(
+                    {"email": email, "password": password}
+                )
+                session = sign_in_response.session
+            except Exception:
+                session = None
+
         tokens = {
             "access_token": session.access_token if session else "",
             "refresh_token": session.refresh_token if session else "",

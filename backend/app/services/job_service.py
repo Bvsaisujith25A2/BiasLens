@@ -34,29 +34,61 @@ class JobService:
         }
         self.repo.create_job(record)
 
-        trigger_payload: dict[str, Any] = {
-            "job_id": job_id,
-            "s3_object_uri": request.s3_object_uri,
-            "dataset_name": request.dataset_name,
-            "analysis_options": request.analysis_options.model_dump(),
+        await self._attempt_trigger(record)
+
+        return self.repo.get_job(job_id)
+
+    def _build_trigger_payload(self, record: dict[str, Any]) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "job_id": record["id"],
+            "s3_object_uri": record["s3_object_uri"],
+            "dataset_name": record.get("dataset_name"),
+            "analysis_options": record.get("analysis_options") or {},
         }
         if self.backend_public_url:
-            trigger_payload["callback_url"] = f"{self.backend_public_url}/api/v1/webhooks/colab/job-status"
+            payload["callback_url"] = f"{self.backend_public_url}/api/v1/webhooks/colab/job-status"
+        return payload
 
-        accepted = await self.colab_service.trigger_analysis(trigger_payload)
+    async def _attempt_trigger(self, record: dict[str, Any]) -> bool:
+        accepted = await self.colab_service.trigger_analysis(self._build_trigger_payload(record))
 
         if accepted:
             self.repo.update_job(
-                job_id,
+                record["id"],
                 {
                     "status": "PROCESSING",
-                    "progress": 10,
+                    "progress": max(int(record.get("progress") or 0), 10),
                     "current_step": "Delegated to ML worker",
+                    "error_message": None,
                     "updated_at": datetime.now(timezone.utc),
                 },
             )
+            return True
 
-        return self.repo.get_job(job_id)
+        # Keep the job resumable while worker is offline.
+        self.repo.update_job(
+            record["id"],
+            {
+                "status": "PENDING",
+                "current_step": "Waiting for ML worker to come online",
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        return False
+
+    async def retry_retriable_jobs(self, limit: int = 25, processing_stale_after_seconds: int = 300) -> int:
+        retriable = self.repo.list_retriable_jobs(
+            limit=limit,
+            processing_stale_after_seconds=processing_stale_after_seconds,
+        )
+
+        resumed = 0
+        for record in retriable:
+            accepted = await self._attempt_trigger(record)
+            if accepted:
+                resumed += 1
+
+        return resumed
 
     def apply_worker_update(self, webhook: ColabJobStatusWebhook) -> dict[str, Any] | None:
         patch: dict[str, Any] = {

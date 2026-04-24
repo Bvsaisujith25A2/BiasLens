@@ -120,13 +120,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       const auth = await api.register(name, email, password);
-      if (!auth.tokens.access_token) {
-        throw new Error("Registration created your account, but no session was returned. Please sign in.");
+      if (auth.tokens.access_token) {
+        localStorage.setItem("auth_token", auth.tokens.access_token);
+        localStorage.setItem("refresh_token", auth.tokens.refresh_token);
+        await syncUserAndAnalyses();
+        return;
       }
 
-      localStorage.setItem("auth_token", auth.tokens.access_token);
-      localStorage.setItem("refresh_token", auth.tokens.refresh_token);
-      await syncUserAndAnalyses();
+      // Fallback: in some auth settings signup creates the account but does not
+      // return a session. Attempt immediate login with the same credentials.
+      try {
+        const signedIn = await api.login(email, password);
+        localStorage.setItem("auth_token", signedIn.tokens.access_token);
+        localStorage.setItem("refresh_token", signedIn.tokens.refresh_token);
+        await syncUserAndAnalyses();
+      } catch {
+        throw new Error("Account created. Please sign in to continue.");
+      }
     } finally {
       setIsLoading(false);
     }

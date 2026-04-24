@@ -5,6 +5,7 @@ import './globals.css'
 import { AuthProvider } from '@/contexts/auth-context'
 import { ThemeProvider } from '@/contexts/theme-context'
 import { Navigation } from '@/components/navigation'
+import { RouteAuthGate } from '@/components/route-auth-gate'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -45,7 +46,7 @@ export default function RootLayout({
             <div className="flex min-h-screen flex-col">
               <Navigation />
               <main className="flex-1">
-                {children}
+                <RouteAuthGate>{children}</RouteAuthGate>
               </main>
               <footer className="border-t bg-background">
                 <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
