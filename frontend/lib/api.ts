@@ -145,7 +145,7 @@ class ApiClient {
     return getApiBaseUrl();
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(response: Response, endpoint?: string): Promise<T> {
     if (!response.ok) {
       let errorMessage = `Request failed with status ${response.status}`;
       
@@ -157,9 +157,14 @@ class ApiClient {
         errorMessage = response.statusText || errorMessage;
       }
 
-      // Provide user-friendly messages for common errors
-      if (response.status === 401) {
+      // Provide user-friendly messages for common errors.
+      // Keep backend detail for auth endpoints so login/signup can show the real reason.
+      const isAuthEndpoint = (endpoint || "").startsWith("/api/v1/auth/");
+      if (response.status === 401 && !isAuthEndpoint) {
         throw new Error("Your session has expired. Please log in again.");
+      }
+      if (response.status === 401 && isAuthEndpoint) {
+        throw new Error(errorMessage || "Invalid email or password.");
       }
       if (response.status === 403) {
         throw new Error("You don't have permission to perform this action.");
@@ -208,7 +213,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config);
-      return this.handleResponse<T>(response);
+      return this.handleResponse<T>(response, endpoint);
     } catch (error) {
       // Handle network errors and CORS issues
       if (error instanceof TypeError && error.message.includes("fetch")) {

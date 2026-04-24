@@ -25,9 +25,15 @@ class AuthService:
                 {"email": email, "password": password}
             )
         except Exception as exc:
+            message = str(exc)
+            if "email not confirmed" in message.lower() or "email_not_confirmed" in message.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Please verify your email before signing in.",
+                ) from exc
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid credentials: {exc}",
+                detail="Invalid email or password.",
             ) from exc
 
         if not auth_response.user or not auth_response.session:
