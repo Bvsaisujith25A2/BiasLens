@@ -1,0 +1,28 @@
+.venv
+
+# Env files (keep examples committed)
+.env
+.env.local
+*.env.local
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+backend/.venv/
+colab/.venv/
+
+# Node / Next artifacts
+node_modules/
+.next/
+out/
+
+# Notebook / Colab artifacts
+.ipynb_checkpoints/
+
+# Logs
+*.log
